@@ -1,0 +1,579 @@
+import 'dart:async';
+import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
+void main() {
+  runApp(const WaterApp());
+}
+
+class WaterApp extends StatelessWidget {
+  const WaterApp({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      title: 'Water Tracker',
+      debugShowCheckedModeBanner: false,
+      theme: ThemeData(
+        primarySwatch: Colors.blue,
+        scaffoldBackgroundColor: const Color(0xFFEAF6FF),
+      ),
+      home: const HomeScreen(),
+    );
+  }
+}
+
+class HomeScreen extends StatefulWidget {
+  const HomeScreen({super.key});
+
+  @override
+  State<HomeScreen> createState() => _HomeScreenState();
+}
+
+class _HomeScreenState extends State<HomeScreen> {
+  int current = 0;
+  int goal = 3000;
+  Timer? midnightTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    loadData();
+    scheduleMidnightReset();
+  }
+
+  Future<void> loadData() async {
+    final prefs = await SharedPreferences.getInstance();
+
+    final lastDate = prefs.getString('lastDate');
+    final today = DateTime.now();
+    final todayKey = '${today.year}-${today.month}-${today.day}';
+
+    int savedCurrent = prefs.getInt('current') ?? 0;
+    int savedGoal = prefs.getInt('goal') ?? 3000;
+
+    if (lastDate != null && lastDate != todayKey) {
+
+      await prefs.setInt(lastDate, savedCurrent);
+      savedCurrent = 0;
+    }
+
+    await prefs.setString('lastDate', todayKey);
+
+    setState(() {
+      current = savedCurrent;
+      goal = savedGoal;
+    });
+  }
+
+  Future<void> saveData() async {
+    final prefs = await SharedPreferences.getInstance();
+    final today = DateTime.now();
+    final todayKey = '${today.year}-${today.month}-${today.day}';
+
+    await prefs.setInt('current', current);
+    await prefs.setInt('goal', goal);
+    await prefs.setString('lastDate', todayKey);
+  }
+
+
+  Future<void> saveHistory(int value) async {
+    final prefs = await SharedPreferences.getInstance();
+    final today = DateTime.now();
+    final key = '${today.year}-${today.month}-${today.day}';
+    await prefs.setInt(key, value);
+  }
+
+  void scheduleMidnightReset() {
+    final now = DateTime.now();
+    final tomorrow =
+    DateTime(now.year, now.month, now.day + 1, 0, 0, 5);
+    final duration = tomorrow.difference(now);
+
+    midnightTimer = Timer(duration, () async {
+      await saveHistory(current);
+      setState(() {
+        current = 0;
+      });
+      saveData();
+      scheduleMidnightReset();
+    });
+  }
+
+  void addWater(int amount) {
+    setState(() {
+      current += amount;
+      if (current < 0) current = 0;
+    });
+    saveData();
+  }
+
+  void reset() {
+    setState(() {
+      current = 0;
+    });
+    saveData();
+  }
+
+  void openSettings() async {
+    final controller = TextEditingController(text: goal.toString());
+
+    final result = await showDialog<int>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('Daily goal (ml)'),
+          content: TextField(
+            controller: controller,
+            keyboardType: TextInputType.number,
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                final value = int.tryParse(controller.text);
+                Navigator.pop(context, value);
+              },
+              child: const Text('Save'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (result != null && result > 0) {
+      setState(() {
+        goal = result;
+      });
+      saveData();
+    }
+  }
+
+  @override
+  void dispose() {
+    midnightTimer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final progress =
+    goal == 0 ? 0.0 : (current / goal).clamp(0.0, 1.0);
+
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Water tracker'),
+        centerTitle: true,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.settings),
+            onPressed: openSettings,
+          ),
+        ],
+      ),
+      body: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          const Text(
+            'Today you drank',
+            style: TextStyle(fontSize: 20),
+          ),
+          const SizedBox(height: 10),
+          Text(
+            '$current ml / $goal ml',
+            style: const TextStyle(
+                fontSize: 26, fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 30),
+
+          SizedBox(
+            width: 120,
+            height: 220,
+            child: CustomPaint(
+              painter: GlassPainter(progress),
+            ),
+          ),
+
+          const SizedBox(height: 30),
+
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              ElevatedButton(
+                onPressed: () => addWater(-250),
+                child: const Text('-250 ml'),
+              ),
+              const SizedBox(width: 20),
+              ElevatedButton(
+                onPressed: () => addWater(250),
+                child: const Text('+250 ml'),
+              ),
+            ],
+          ),
+
+          const SizedBox(height: 20),
+
+          ElevatedButton(
+            onPressed: reset,
+            child: const Text('Reset'),
+          ),
+
+          const SizedBox(height: 40),
+
+          Align(
+            alignment: Alignment.bottomRight,
+            child: Padding(
+              padding: const EdgeInsets.only(right: 20),
+              child: ElevatedButton(
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => const HistoryScreen(),
+                    ),
+                  );
+                },
+                child: const Text('History'),
+              ),
+            ),
+          )
+        ],
+      ),
+    );
+  }
+}
+
+class GlassPainter extends CustomPainter {
+  final double progress;
+
+  GlassPainter(this.progress);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final glassRect =
+    Rect.fromLTWH(10, 10, size.width - 20, size.height - 20);
+
+    final glassPaint = Paint()
+      ..color = Colors.grey.shade600
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 3;
+
+    final waterPaint = Paint()
+      ..color = Colors.lightBlue;
+
+    canvas.drawRect(glassRect, glassPaint);
+
+    final waterHeight = glassRect.height * progress;
+
+    final waterRect = Rect.fromLTWH(
+      glassRect.left,
+      glassRect.bottom - waterHeight,
+      glassRect.width,
+      waterHeight,
+    );
+
+    canvas.drawRect(waterRect, waterPaint);
+  }
+
+  @override
+  bool shouldRepaint(covariant GlassPainter oldDelegate) {
+    return oldDelegate.progress != progress;
+  }
+}
+
+class HistoryScreen extends StatefulWidget {
+  const HistoryScreen({super.key});
+
+  @override
+  State<HistoryScreen> createState() => _HistoryScreenState();
+}
+
+class _HistoryScreenState extends State<HistoryScreen> {
+
+  DateTime displayedMonth = DateTime.now();
+  Map<String, int> history = {};
+  int goal = 3000;
+
+  final List<String> months = [
+    "January","February","March","April","May","June",
+    "July","August","September","October","November","December"
+  ];
+
+  @override
+  void initState() {
+    super.initState();
+    loadHistory();
+  }
+
+  Color progressColor(double progress) {
+    if (progress < 0.3) {
+      return Colors.red;
+    } else if (progress < 0.7) {
+      return Colors.orange;
+    } else {
+      return Colors.green;
+    }
+  }
+
+  Future<void> loadHistory() async {
+    final prefs = await SharedPreferences.getInstance();
+    final keys = prefs.getKeys();
+
+    Map<String,int> data = {};
+
+    for (var k in keys) {
+      if (k.contains('-')) {
+        data[k] = prefs.getInt(k) ?? 0;
+      }
+    }
+
+    setState(() {
+      history = data;
+      goal = prefs.getInt('goal') ?? 3000;
+    });
+  }
+
+  void changeMonth(int delta) {
+    setState(() {
+      displayedMonth =
+          DateTime(displayedMonth.year, displayedMonth.month + delta, 1);
+    });
+  }
+
+  void changeYear(int delta) {
+    setState(() {
+      displayedMonth =
+          DateTime(displayedMonth.year + delta, displayedMonth.month, 1);
+    });
+  }
+
+  int daysInMonth(DateTime d) {
+    final next = DateTime(d.year, d.month + 1, 1);
+    return next.subtract(const Duration(days: 1)).day;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+
+    return Scaffold(
+      backgroundColor: const Color(0xFFEAF6FF),
+
+      appBar: AppBar(
+        title: const Text("History"),
+        centerTitle: true,
+      ),
+
+      body: Center(
+        child: Card(
+          elevation: 10,
+          shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(20)),
+          child: SizedBox(
+            width: 350,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+
+                calendarHeader(),
+
+                calendarGrid(),
+
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget calendarHeader() {
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          colors: [
+            Color(0xFF4FC3F7),
+            Color(0xFF0288D1),
+          ],
+        ),
+        borderRadius: BorderRadius.vertical(
+          top: Radius.circular(20),
+        ),
+      ),
+      child: Column(
+        children: [
+
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+
+              IconButton(
+                icon: const Icon(Icons.keyboard_double_arrow_left,
+                    color: Colors.white),
+                onPressed: () => changeYear(-1),
+              ),
+
+              Text(
+                displayedMonth.year.toString(),
+                style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 26,
+                    fontWeight: FontWeight.bold),
+              ),
+
+              IconButton(
+                icon: const Icon(Icons.keyboard_double_arrow_right,
+                    color: Colors.white),
+                onPressed: () => changeYear(1),
+              ),
+            ],
+          ),
+
+          const SizedBox(height: 4),
+
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+
+              IconButton(
+                icon: const Icon(Icons.arrow_left, color: Colors.white),
+                onPressed: () => changeMonth(-1),
+              ),
+
+              Text(
+                months[displayedMonth.month - 1],
+                style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 18,
+                    fontWeight: FontWeight.w600),
+              ),
+
+              IconButton(
+                icon: const Icon(Icons.arrow_right, color: Colors.white),
+                onPressed: () => changeMonth(1),
+              ),
+            ],
+          )
+        ],
+      ),
+    );
+  }
+
+  Widget calendarGrid() {
+
+    final now = DateTime.now();
+
+    final firstDay =
+    DateTime(displayedMonth.year, displayedMonth.month, 1);
+
+    final startWeekday = firstDay.weekday;
+
+    final totalDays = daysInMonth(displayedMonth);
+
+    List<Widget> cells = [];
+
+    const weekdays = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
+
+    for (var d in weekdays) {
+      cells.add(
+        Center(
+          child: Text(
+            d,
+            style: const TextStyle(
+                fontWeight: FontWeight.bold,
+                color: Colors.blueGrey),
+          ),
+        ),
+      );
+    }
+
+    for (int i = 1; i < startWeekday; i++) {
+      cells.add(Container());
+    }
+
+    for (int day = 1; day <= totalDays; day++) {
+
+      final key =
+          "${displayedMonth.year}-${displayedMonth.month}-$day";
+
+      final value = history[key] ?? 0;
+
+      final isToday =
+          now.year == displayedMonth.year &&
+              now.month == displayedMonth.month &&
+              now.day == day;
+
+      final progress = goal == 0 ? 0.0 : (value / goal).clamp(0.0, 1.0);
+      final color = progressColor(progress);
+
+      cells.add(
+        AspectRatio(
+          aspectRatio: 1,
+          child: Center(
+            child: Container(
+              width: 42,
+              height: 42,
+
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+
+                color: value == 0
+                    ? Colors.grey.shade200
+                    : color,
+
+                border: Border.all(
+                  color: isToday ? Colors.blue : Colors.grey.shade300,
+                  width: isToday ? 2 : 1,
+                ),
+              ),
+
+              child: Stack(
+                alignment: Alignment.center,
+                children: [
+
+                  Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+
+                      Text(
+                        day.toString(),
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          color: value == 0 ? Colors.black : Colors.white,
+                        ),
+                      ),
+
+                      if (value > 0)
+                        Text(
+                          "$value ml",
+                          style: const TextStyle(
+                            fontSize: 9,
+                            color: Colors.white,
+                          ),
+                        ),
+                    ],
+                  ),
+
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
+    return Padding(
+      padding: const EdgeInsets.all(12),
+      child: GridView.count(
+        shrinkWrap: true,
+        physics: const NeverScrollableScrollPhysics(),
+        crossAxisCount: 7,
+        children: cells,
+      ),
+    );
+  }
+}
