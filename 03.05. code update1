@@ -164,8 +164,10 @@ class _HomeScreenState extends State<HomeScreen> {
     goal == 0 ? 0.0 : (current / goal).clamp(0.0, 1.0);
 
     return Scaffold(
+      backgroundColor: const Color(0xFFEAF6FF),
+
       appBar: AppBar(
-        title: const Text('Water tracker'),
+        title: const Text("Water Tracker"),
         centerTitle: true,
         actions: [
           IconButton(
@@ -174,76 +176,161 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         ],
       ),
-      body: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          const Text(
-            'Today you drank',
-            style: TextStyle(fontSize: 20),
-          ),
-          const SizedBox(height: 10),
-          Text(
-            '$current ml / $goal ml',
-            style: const TextStyle(
-                fontSize: 26, fontWeight: FontWeight.bold),
-          ),
-          const SizedBox(height: 30),
 
-          SizedBox(
-            width: 120,
-            height: 220,
-            child: CustomPaint(
-              painter: GlassPainter(progress),
-            ),
+      body: Center(
+        child: Card(
+          elevation: 10,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
           ),
 
-          const SizedBox(height: 30),
+          child: SizedBox(
+            width: 350,
 
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              ElevatedButton(
-                onPressed: () => addWater(-250),
-                child: const Text('-250 ml'),
-              ),
-              const SizedBox(width: 20),
-              ElevatedButton(
-                onPressed: () => addWater(250),
-                child: const Text('+250 ml'),
-              ),
-            ],
-          ),
-
-          const SizedBox(height: 20),
-
-          ElevatedButton(
-            onPressed: reset,
-            child: const Text('Reset'),
-          ),
-
-          const SizedBox(height: 40),
-
-          Align(
-            alignment: Alignment.bottomRight,
             child: Padding(
-              padding: const EdgeInsets.only(right: 20),
-              child: ElevatedButton(
-                onPressed: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => const HistoryScreen(),
+              padding: const EdgeInsets.all(24),
+
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+
+                  const Text(
+                    "Today",
+                    style: TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.blueGrey,
                     ),
-                  );
-                },
-                child: const Text('History'),
+                  ),
+
+                  const SizedBox(height: 10),
+
+                  Text(
+                    "$current ml / $goal ml",
+                    style: const TextStyle(
+                      fontSize: 28,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+
+                  const SizedBox(height: 30),
+
+                  SizedBox(
+                    width: 140,
+                    height: 220,
+                    child: CustomPaint(
+                      painter: GlassPainter(progress),
+                    ),
+                  ),
+
+                  const SizedBox(height: 30),
+
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+
+                      actionButton(
+                        icon: Icons.remove,
+                        label: "250 ml",
+                        color: Colors.red,
+                        onTap: () => addWater(-250),
+                      ),
+
+                      const SizedBox(width: 20),
+
+                      actionButton(
+                        icon: Icons.add,
+                        label: "250 ml",
+                        color: Colors.blue,
+                        onTap: () => addWater(250),
+                      ),
+                    ],
+                  ),
+
+                  const SizedBox(height: 16),
+
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+
+                      secondaryButton(
+                        icon: Icons.refresh,
+                        text: "Reset",
+                        onTap: reset,
+                      ),
+
+                      const SizedBox(width: 16),
+
+                      secondaryButton(
+                        icon: Icons.calendar_month,
+                        text: "History",
+                        onTap: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => const HistoryScreen(),
+                            ),
+                          );
+                        },
+                      ),
+                    ],
+                  ),
+                ],
               ),
             ),
-          )
-        ],
+          ),
+        ),
       ),
     );
   }
+}
+
+Widget actionButton({
+  required IconData icon,
+  required String label,
+  required Color color,
+  required VoidCallback onTap,
+}) {
+  return ElevatedButton.icon(
+    onPressed: onTap,
+    icon: Icon(icon),
+    label: Text(label),
+    style: ElevatedButton.styleFrom(
+      backgroundColor: color,
+      foregroundColor: Colors.white,
+      padding: const EdgeInsets.symmetric(
+        horizontal: 18,
+        vertical: 14,
+      ),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(14),
+      ),
+      elevation: 4,
+    ),
+  );
+}
+
+Widget secondaryButton({
+  required IconData icon,
+  required String text,
+  required VoidCallback onTap,
+}) {
+  return OutlinedButton.icon(
+    onPressed: onTap,
+    icon: Icon(icon),
+    label: Text(text),
+
+    style: OutlinedButton.styleFrom(
+      padding: const EdgeInsets.symmetric(
+        horizontal: 16,
+        vertical: 12,
+      ),
+
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(14),
+      ),
+    ),
+  );
 }
 
 class GlassPainter extends CustomPainter {
