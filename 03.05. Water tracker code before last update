@@ -1,0 +1,483 @@
+import 'dart:async';
+import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
+void main() {
+  runApp(const WaterApp());
+}
+
+class WaterApp extends StatelessWidget {
+  const WaterApp({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      title: 'Water Tracker',
+      debugShowCheckedModeBanner: false,
+      theme: ThemeData(
+        primarySwatch: Colors.blue,
+        scaffoldBackgroundColor: const Color(0xFFEAF6FF),
+      ),
+      home: const HomeScreen(),
+    );
+  }
+}
+
+class HomeScreen extends StatefulWidget {
+  const HomeScreen({super.key});
+
+  @override
+  State<HomeScreen> createState() => _HomeScreenState();
+}
+
+class _HomeScreenState extends State<HomeScreen> {
+  int current = 0;
+  int goal = 3000;
+  Timer? midnightTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    loadData();
+    scheduleMidnightReset();
+  }
+
+  Future<void> loadData() async {
+    final prefs = await SharedPreferences.getInstance();
+
+    final lastDate = prefs.getString('lastDate');
+    final today = DateTime.now();
+    final todayKey = '${today.year}-${today.month}-${today.day}';
+
+    int savedCurrent = prefs.getInt('current') ?? 0;
+    int savedGoal = prefs.getInt('goal') ?? 3000;
+
+    if (lastDate != null && lastDate != todayKey) {
+
+      await prefs.setInt(lastDate, savedCurrent);
+      savedCurrent = 0;
+    }
+
+    await prefs.setString('lastDate', todayKey);
+
+    setState(() {
+      current = savedCurrent;
+      goal = savedGoal;
+    });
+  }
+
+  Future<void> saveData() async {
+    final prefs = await SharedPreferences.getInstance();
+    final today = DateTime.now();
+    final todayKey = '${today.year}-${today.month}-${today.day}';
+
+    await prefs.setInt('current', current);
+    await prefs.setInt('goal', goal);
+    await prefs.setString('lastDate', todayKey);
+  }
+
+
+  Future<void> saveHistory(int value) async {
+    final prefs = await SharedPreferences.getInstance();
+    final today = DateTime.now();
+    final key = '${today.year}-${today.month}-${today.day}';
+    await prefs.setInt(key, value);
+  }
+
+  void scheduleMidnightReset() {
+    final now = DateTime.now();
+    final tomorrow =
+    DateTime(now.year, now.month, now.day + 1, 0, 0, 5);
+    final duration = tomorrow.difference(now);
+
+    midnightTimer = Timer(duration, () async {
+      await saveHistory(current);
+      setState(() {
+        current = 0;
+      });
+      saveData();
+      scheduleMidnightReset();
+    });
+  }
+
+  void addWater(int amount) {
+    setState(() {
+      current += amount;
+      if (current < 0) current = 0;
+    });
+    saveData();
+  }
+
+  void reset() {
+    setState(() {
+      current = 0;
+    });
+    saveData();
+  }
+
+  void openSettings() async {
+    final controller = TextEditingController(text: goal.toString());
+
+    final result = await showDialog<int>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('Daily goal (ml)'),
+          content: TextField(
+            controller: controller,
+            keyboardType: TextInputType.number,
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                final value = int.tryParse(controller.text);
+                Navigator.pop(context, value);
+              },
+              child: const Text('Save'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (result != null && result > 0) {
+      setState(() {
+        goal = result;
+      });
+      saveData();
+    }
+  }
+
+  @override
+  void dispose() {
+    midnightTimer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final progress =
+    goal == 0 ? 0.0 : (current / goal).clamp(0.0, 1.0);
+
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Water tracker'),
+        centerTitle: true,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.settings),
+            onPressed: openSettings,
+          ),
+        ],
+      ),
+      body: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          const Text(
+            'Today you drank',
+            style: TextStyle(fontSize: 20),
+          ),
+          const SizedBox(height: 10),
+          Text(
+            '$current ml / $goal ml',
+            style: const TextStyle(
+                fontSize: 26, fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 30),
+
+          SizedBox(
+            width: 120,
+            height: 220,
+            child: CustomPaint(
+              painter: GlassPainter(progress),
+            ),
+          ),
+
+          const SizedBox(height: 30),
+
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              ElevatedButton(
+                onPressed: () => addWater(-250),
+                child: const Text('-250 ml'),
+              ),
+              const SizedBox(width: 20),
+              ElevatedButton(
+                onPressed: () => addWater(250),
+                child: const Text('+250 ml'),
+              ),
+            ],
+          ),
+
+          const SizedBox(height: 20),
+
+          ElevatedButton(
+            onPressed: reset,
+            child: const Text('Reset'),
+          ),
+
+          const SizedBox(height: 40),
+
+          Align(
+            alignment: Alignment.bottomRight,
+            child: Padding(
+              padding: const EdgeInsets.only(right: 20),
+              child: ElevatedButton(
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => const HistoryScreen(),
+                    ),
+                  );
+                },
+                child: const Text('History'),
+              ),
+            ),
+          )
+        ],
+      ),
+    );
+  }
+}
+
+class GlassPainter extends CustomPainter {
+  final double progress;
+
+  GlassPainter(this.progress);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final glassRect =
+    Rect.fromLTWH(10, 10, size.width - 20, size.height - 20);
+
+    final glassPaint = Paint()
+      ..color = Colors.grey.shade600
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 3;
+
+    final waterPaint = Paint()
+      ..color = Colors.lightBlue;
+
+    canvas.drawRect(glassRect, glassPaint);
+
+    final waterHeight = glassRect.height * progress;
+
+    final waterRect = Rect.fromLTWH(
+      glassRect.left,
+      glassRect.bottom - waterHeight,
+      glassRect.width,
+      waterHeight,
+    );
+
+    canvas.drawRect(waterRect, waterPaint);
+  }
+
+  @override
+  bool shouldRepaint(covariant GlassPainter oldDelegate) {
+    return oldDelegate.progress != progress;
+  }
+}
+
+class HistoryScreen extends StatefulWidget {
+  const HistoryScreen({super.key});
+
+  @override
+  State<HistoryScreen> createState() => _HistoryScreenState();
+}
+
+class _HistoryScreenState extends State<HistoryScreen> {
+  DateTime displayedMonth = DateTime.now();
+  Map<String, int> history = {};
+
+  @override
+  void initState() {
+    super.initState();
+    loadHistory();
+  }
+
+  Future<void> loadHistory() async {
+    final prefs = await SharedPreferences.getInstance();
+    final keys = prefs.getKeys();
+
+    Map<String, int> data = {};
+
+    for (var key in keys) {
+      if (key.contains('-')) {
+        data[key] = prefs.getInt(key) ?? 0;
+      }
+    }
+
+    setState(() {
+      history = data;
+    });
+  }
+
+  int getDaysInMonth(DateTime date) {
+    final nextMonth = DateTime(date.year, date.month + 1, 1);
+    final lastDay = nextMonth.subtract(const Duration(days: 1));
+    return lastDay.day;
+  }
+
+  List<Widget> buildCalendar() {
+    List<Widget> cells = [];
+    const weekDays = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
+
+
+    final now = DateTime.now();
+
+
+    for (var d in weekDays) {
+      cells.add(Container(
+        alignment: Alignment.center,
+        child: Text(d, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+      ));
+    }
+
+    final firstDay = DateTime(displayedMonth.year, displayedMonth.month, 1);
+    int startWeekday = firstDay.weekday;
+
+    for (int i = 1; i < startWeekday; i++) {
+      cells.add(const SizedBox());
+    }
+
+    final days = getDaysInMonth(displayedMonth);
+
+    for (int day = 1; day <= days; day++) {
+      final key = '${displayedMonth.year}-${displayedMonth.month}-$day';
+      final value = history[key] ?? 0;
+
+
+      bool isToday = now.year == displayedMonth.year &&
+          now.month == displayedMonth.month &&
+          now.day == day;
+
+      cells.add(Container(
+        padding: const EdgeInsets.all(6),
+        decoration: BoxDecoration(
+
+          color: isToday ? Colors.blue.withOpacity(0.2) : Colors.transparent,
+          border: Border.all(
+            color: isToday ? Colors.blue : Colors.grey.shade300,
+            width: isToday ? 2 : 1,
+          ),
+          borderRadius: isToday ? BorderRadius.circular(8) : null,
+        ),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Text(
+              '$day',
+              style: TextStyle(
+                fontWeight: FontWeight.bold,
+                fontSize: 14,
+
+                color: isToday ? Colors.blue.shade900 : Colors.black,
+              ),
+            ),
+            const SizedBox(height: 2),
+            Text(
+              '$value ml',
+              style: TextStyle(
+                fontSize: 10,
+                fontWeight: isToday ? FontWeight.bold : FontWeight.normal,
+              ),
+            ),
+          ],
+        ),
+      ));
+    }
+
+    return cells;
+  }
+
+  void changeMonth(int delta) {
+    setState(() {
+      displayedMonth = DateTime(
+        displayedMonth.year,
+        displayedMonth.month + delta,
+        1,
+      );
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final year = displayedMonth.year;
+    final month = displayedMonth.month;
+
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Water tracker'),
+        centerTitle: true,
+      ),
+      body: Column(
+        children: [
+          const SizedBox(height: 10),
+          Text(
+            '$year',
+            style: const TextStyle(
+                fontSize: 28, fontWeight: FontWeight.bold),
+          ),
+          Text(
+            month.toString().padLeft(2, '0'),
+            style: const TextStyle(
+                fontSize: 22, fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 10),
+
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              IconButton(
+                onPressed: () => changeMonth(-1),
+                icon: const Icon(Icons.arrow_left),
+              ),
+              IconButton(
+                onPressed: () => changeMonth(1),
+                icon: const Icon(Icons.arrow_right),
+              ),
+            ],
+          ),
+
+          Expanded(
+            child: Center(
+              child: Container(
+                width: 600,
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(12),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black12,
+                      blurRadius: 8,
+                      offset: Offset(0, 4),
+                    )
+                  ],
+                ),
+                child: GridView.count(
+                  crossAxisCount: 7,
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  childAspectRatio: 0.9,
+                  children: buildCalendar(),
+                ),
+              ),
+            ),
+          ),
+
+        ],
+      ),
+      floatingActionButton: FloatingActionButton(
+        child: const Icon(Icons.arrow_back),
+        onPressed: () => Navigator.pop(context),
+      ),
+    );
+  }
+}
